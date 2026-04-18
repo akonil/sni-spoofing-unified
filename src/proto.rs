@@ -12,13 +12,21 @@ pub struct ConnId {
 
 #[derive(Debug)]
 pub enum SnifferResult {
-    FakeConfirmed,
+    /// Fake ClientHello was ignored by the server (DPI bypass succeeded).
+    /// Carries the SNI that was used, for tracking.
+    FakeConfirmed { sni: String },
     Failed(String),
 }
 
 pub struct Registration {
     pub conn_id: ConnId,
-    pub fake_payload: Vec<u8>,
+    /// One or more fragments of the fake ClientHello payload.
+    /// Single-element vec = no fragmentation (normal case).
+    pub fake_payloads: Vec<Vec<u8>>,
+    /// The SNI chosen for this connection (for tracking).
+    pub fake_sni: String,
+    /// Delay between fragments in milliseconds (0 = no delay).
+    pub fragment_delay_ms: u64,
     pub result_tx: mpsc::Sender<SnifferResult>,
     pub registered_tx: tokio::sync::oneshot::Sender<()>,
 }

@@ -96,6 +96,26 @@ Binary location after release build:
 
 ---
 
+## Quick Start: --wizard or --preset
+
+For non-expert users, use the interactive wizard:
+
+```bash
+sudo ./sni-spoof --wizard
+```
+
+This prompts you for upstream IP, listen port, and SNI pool, then generates `config.json`.
+
+Alternatively, use a preset:
+
+```bash
+./sni-spoof --preset hcaptcha   # hCaptcha SNI pool (recommended)
+./sni-spoof --preset cloudflare # Cloudflare SNI pool
+./sni-spoof --preset stealth    # hCaptcha + fragmentation enabled
+```
+
+---
+
 ## Configuration
 
 Create or edit `config.json` in the project directory:
@@ -115,10 +135,15 @@ Create or edit `config.json` in the project directory:
     {
       "listen": "0.0.0.0:40443",
       "connect": "172.67.139.236:443",
-      "fake_sni": "security.vercel.com",
+      "fake_sni_pool": ["security.vercel.com", "cdn.vercel.com"],
+      "max_connections_per_sec": 0,
       "gaming_mode": false
     }
-  ]
+  ],
+  "advanced": {
+    "payload_padding": { "min_extra_bytes": 0, "max_extra_bytes": 128 },
+    "fragmentation": { "enabled": false, "fragments": 2, "delay_ms": 1 }
+  }
 }
 ```
 
@@ -141,8 +166,20 @@ Create or edit `config.json` in the project directory:
 |-------|------|---------|-------------|
 | `listen` | string | — | Local address and port the proxy listens on. Use `0.0.0.0` to accept from all interfaces. |
 | `connect` | string | — | Upstream server IP and port to connect to (the real destination). |
-| `fake_sni` | string | — | The decoy hostname injected in the forged ClientHello. Should be a popular, allowed domain (e.g. `speedtest.net`, `www.google.com`). |
+| `fake_sni` | string | — | (Legacy) Single decoy hostname. Use `fake_sni_pool` instead for rotation across multiple SNIs. |
+| `fake_sni_pool` | array | `[]` | **NEW:** Pool of decoy hostnames. One is chosen at random per connection. If empty, falls back to `fake_sni`. Popular domains: `speedtest.net`, `www.google.com`, `security.vercel.com`, `cdn.cloudflare.com`. |
+| `max_connections_per_sec` | number | `0` | **NEW:** Rate limit for incoming connections (0 = unlimited). Useful to prevent connection storms. |
 | `gaming_mode` | bool | `false` | When `true`: uses small socket buffers (32 KB) for lower latency. When `false`: uses large buffers (256 KB) for higher throughput. Enable for gaming or real-time apps; leave off for downloads or streaming. |
+
+#### Advanced DPI Evasion (optional)
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `advanced.payload_padding.min_extra_bytes` | number | `0` | Minimum random bytes to add to fake ClientHello (0 = disabled). |
+| `advanced.payload_padding.max_extra_bytes` | number | `0` | Maximum random bytes to add (0 = disabled). Varies packet size to defeat fingerprinting. |
+| `advanced.fragmentation.enabled` | bool | `false` | Split fake ClientHello into N TCP segments to confuse DPI reassembly. |
+| `advanced.fragmentation.fragments` | number | `2` | Number of fragments (2 or 3, default 2). |
+| `advanced.fragmentation.delay_ms` | number | `1` | Millisecond delay between fragments. |
 
 ### Inject Jitter
 
@@ -152,6 +189,56 @@ To disable jitter (not recommended):
 ```json
 "jitter": { "min_ms": 0, "max_ms": 0 }
 ```
+
+---
+
+## Advanced DPI Evasion Features
+
+### 1. SNI Pool Rotation
+
+Instead of using a single fake SNI, rotate through multiple domains per connection:
+
+```json
+"fake_sni_pool": [
+  "hcaptcha.com",
+  "newassets.hcaptcha.com",
+  "js.hcaptcha.com",
+  "api.hcaptcha.com"
+]
+```
+
+Each connection randomly picks one SNI from the pool, making traffic less predictable to DPI fingerprinting.
+
+### 2. Payload Padding
+
+Add random extra bytes to the fake ClientHello to vary packet size:
+
+```json
+"advanced": {
+  "payload_padding": {
+    "min_extra_bytes": 0,
+    "max_extra_bytes": 128
+  }
+}
+```
+
+Prevents DPI from fingerprinting based on exact packet size (e.g., "all blocks are exactly 517 bytes").
+
+### 3. Fragmentation
+
+Split the fake ClientHello into multiple TCP segments:
+
+```json
+"advanced": {
+  "fragmentation": {
+    "enabled": true,
+    "fragments": 2,
+    "delay_ms": 1
+  }
+}
+```
+
+Makes reassembly harder for DPI engines. Each fragment arrives as a separate TCP packet with a small delay between them.
 
 ---
 
@@ -249,20 +336,22 @@ When `debounce_logs: true`, repeated `warn`/`error` messages for the same event 
 sni-spoofing-unified/
 ├── src/
 │   ├── main.rs          # Entry point: loads config, starts sniffer + listeners
-│   ├── config.rs        # Config deserialization and validation
+│   ├── config.rs        # Config deserialization & validation (SNI pool, advanced DPI options)
 │   ├── debounce.rs      # Rate-limited logging module
-│   ├── handler.rs       # Per-connection logic: fake inject + relay
-│   ├── listener.rs      # TCP accept loop
+│   ├── handler.rs       # Per-connection logic: SNI rotation, padding, fragmentation, tracking
+│   ├── listener.rs      # TCP accept loop with rate limiting
 │   ├── relay.rs         # Bidirectional data relay
 │   ├── shutdown.rs      # Graceful signal handling (Ctrl+C / SIGTERM)
 │   ├── error.rs         # Typed error definitions
-│   ├── proto.rs         # Internal channel message types
+│   ├── proto.rs         # Internal channel message types (Registration, SnifferResult)
+│   ├── stats.rs         # Connection stats and SniTracker (SNI success/failure counts)
+│   ├── wizard.rs        # Interactive config wizard and named presets (--wizard, --preset)
 │   ├── packet/          # Raw packet parsing (Ethernet, IP, TCP, TLS)
 │   └── sniffer/         # Platform-specific packet capture backends
 │       ├── linux.rs     # AF_PACKET raw socket
 │       ├── macos.rs     # BPF device
 │       ├── windows.rs   # WinDivert
-│       └── mod.rs       # Shared sniffer state machine
+│       └── mod.rs       # Shared sniffer state machine (fragment injection)
 ├── config.json          # Example configuration
 ├── Cargo.toml
 └── .gitignore

@@ -10,6 +10,10 @@ pub enum ConfigError {
     Empty,
     #[error("fake_sni too long (max 219 bytes): '{0}'")]
     SniTooLong(String),
+    #[error("no fake_sni or fake_sni_pool set for listener {0} — add at least one SNI")]
+    MissingSni(String),
+    #[error("fragmentation.fragments must be 2 or 3")]
+    InvalidFragments,
 }
 
 #[derive(Debug, Error)]

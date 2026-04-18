@@ -4,6 +4,43 @@
 
 ---
 
+## Quick Start for Non-Experts: --wizard
+
+If you don't want to manually edit JSON, use the interactive wizard:
+
+```bash
+sudo ./sni-spoof --wizard
+```
+
+It will ask you:
+1. **Upstream server IP:port** — e.g., `1.2.3.4:443`
+2. **Local listen port** — defaults to `40443`
+3. **SNI pool** — choose from hCaptcha (recommended), Cloudflare, or custom
+4. **Enable DPI evasion** — enable fragmentation + payload padding
+
+Then generates `config.json` and exits. Run again with your config.
+
+---
+
+## Quick Start for Scripts: --preset
+
+Pre-configured templates for common use cases:
+
+```bash
+# hCaptcha pool (6 SNIs, no fragmentation)
+./sni-spoof --preset hcaptcha
+
+# Cloudflare pool (4 SNIs, no fragmentation)
+./sni-spoof --preset cloudflare
+
+# Stealth mode (hCaptcha pool + fragmentation enabled + padding)
+./sni-spoof --preset stealth
+```
+
+Presets generate `config.json` with placeholder `UPSTREAM_IP`. Edit the file and replace it with your actual upstream IP, then run.
+
+---
+
 ## Option 1: Download Prebuilt Binaries (Recommended)
 
 Download the latest release from the [Releases](https://github.com/akonil/sni-spoofing-unified/releases) page.
@@ -81,18 +118,34 @@ Edit `config.json`:
     {
       "listen": "0.0.0.0:40443",
       "connect": "YOUR_SERVER_IP:443",
-      "fake_sni": "www.speedtest.net",
+      "fake_sni_pool": ["www.speedtest.net", "www.google.com"],
+      "max_connections_per_sec": 0,
       "gaming_mode": false
     }
-  ]
+  ],
+  "advanced": {
+    "payload_padding": {
+      "min_extra_bytes": 0,
+      "max_extra_bytes": 128
+    },
+    "fragmentation": {
+      "enabled": false,
+      "fragments": 2,
+      "delay_ms": 1
+    }
+  }
 }
 ```
 
 Replace `YOUR_SERVER_IP` with your actual upstream server IP.
 
-> **Jitter** adds a 1–8 ms random delay before the fake ClientHello is sent, making timing-based DPI detection much harder. Leave it at defaults unless you have a specific reason to change it. Set `max_ms: 0` to disable.
->
-> **Timeouts:** `handshake_timeout_ms` (default 5000 ms) controls how long to wait for a TCP connection to establish. `confirmation_timeout_ms` (default 2000 ms) controls how long to wait for the sniffer to confirm the fake packet injection. Adjust if you have slow or unstable connections.
+**Configuration notes:**
+
+- **Jitter** (default 1–8 ms) adds random delay before sending the fake ClientHello. Disables timing-based DPI detection. Set `max_ms: 0` to disable.
+- **fake_sni_pool**: Array of decoy domains. One is chosen randomly per connection. Backward compatible: if using old `fake_sni` field, it's automatically wrapped into a pool.
+- **max_connections_per_sec**: Rate limit (0 = unlimited). Useful to prevent connection floods.
+- **Payload Padding** (advanced): Adds 0-128 random bytes to vary fake ClientHello size, defeating fixed-size fingerprinting.
+- **Fragmentation** (advanced): Splits fake ClientHello into 2-3 TCP segments, confusing DPI reassembly. Set `enabled: true` for stricter DPI.
 
 ### 4. Run
 
@@ -206,15 +259,24 @@ Right-click Command Prompt → **Run as administrator**, then:
 
 1. Start the proxy — you should see a log line like:
    ```
-   listener started listen=0.0.0.0:40443 upstream=... sni=...
+   listener started listen=0.0.0.0:40443 upstream=... sni_pool=[...]
    ```
 
 2. Point your client (VPN app, browser proxy, etc.) at `127.0.0.1:40443`.
 
-3. Enable `info` logs to see connections being handled:
+3. Enable `info` logs to see connections being handled and SNI stats:
    ```bash
    RUST_LOG=info sudo ./target/release/sni-spoof config.json
    ```
+
+When running with multiple SNIs, the proxy logs success/failure per SNI every 60 seconds:
+```
+INFO SNI stats (top 10 by success):
+INFO   www.speedtest.net → ok=142 fail=3
+INFO   www.google.com → ok=98 fail=1
+```
+
+This helps you identify which SNIs work best in your region.
 
 ---
 

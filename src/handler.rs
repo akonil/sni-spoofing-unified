@@ -7,31 +7,49 @@ use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tracing::{debug, info};
 
+use crate::config::{FragmentationConfig, PayloadPaddingConfig};
 use crate::error::HandlerError;
 use crate::log_debounced;
 use crate::packet::tls;
 use crate::proto::{ConnId, Deregistration, Registration, SnifferCommand, SnifferResult};
 use crate::relay;
-use crate::stats::{ConnectionGuard, Stats};
+use crate::stats::{ConnectionGuard, SniTracker, Stats};
 
 pub async fn handle_connection(
     client: TcpStream,
     upstream_addr: SocketAddr,
-    fake_sni: String,
+    sni_pool: Vec<String>,
     local_ip: std::net::IpAddr,
     cmd_tx: std::sync::mpsc::Sender<SnifferCommand>,
     gaming_mode: bool,
     stats: Arc<Stats>,
+    sni_tracker: Arc<SniTracker>,
     handshake_timeout_ms: u64,
     confirmation_timeout_ms: u64,
+    padding_cfg: PayloadPaddingConfig,
+    fragmentation_cfg: FragmentationConfig,
 ) {
     // Guard increments active+total on creation, decrements active on drop.
     let guard = ConnectionGuard::new(stats.clone());
     let (active, total) = guard.snapshot();
     info!(upstream = %upstream_addr, active, total, "connection opened");
 
-    if let Err(e) = handle_inner(client, upstream_addr, &fake_sni, local_ip, &cmd_tx, gaming_mode, handshake_timeout_ms, confirmation_timeout_ms).await {
-        match &e {
+    let result = handle_inner(
+        client,
+        upstream_addr,
+        sni_pool,
+        local_ip,
+        &cmd_tx,
+        gaming_mode,
+        &sni_tracker,
+        handshake_timeout_ms,
+        confirmation_timeout_ms,
+        &padding_cfg,
+        &fragmentation_cfg,
+    ).await;
+
+    if let Err(ref e) = result {
+        match e {
             HandlerError::Timeout => {
                 log_debounced!("handler_timeout", warn, upstream = %upstream_addr, "timeout waiting for fake ACK");
             }
@@ -64,17 +82,43 @@ fn configure_socket(sock_ref: &socket2::SockRef, gaming_mode: bool) {
     }
 }
 
+fn split_payload(payload: &[u8], n: usize) -> Vec<Vec<u8>> {
+    let chunk = (payload.len() + n - 1) / n;
+    payload.chunks(chunk).map(|c| c.to_vec()).collect()
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn handle_inner(
     client: TcpStream,
     upstream_addr: SocketAddr,
-    fake_sni: &str,
+    sni_pool: Vec<String>,
     local_ip: std::net::IpAddr,
     cmd_tx: &std::sync::mpsc::Sender<SnifferCommand>,
     gaming_mode: bool,
+    sni_tracker: &Arc<SniTracker>,
     handshake_timeout_ms: u64,
     confirmation_timeout_ms: u64,
+    padding_cfg: &PayloadPaddingConfig,
+    fragmentation_cfg: &FragmentationConfig,
 ) -> Result<(), HandlerError> {
-    let fake_payload = tls::build_client_hello(fake_sni);
+    // Pick a fake SNI from the pool (random if pool has multiple entries).
+    let fake_sni = if sni_pool.len() == 1 {
+        sni_pool[0].clone()
+    } else {
+        use rand::Rng;
+        let idx = rand::thread_rng().gen_range(0..sni_pool.len());
+        sni_pool[idx].clone()
+    };
+
+    // Build the fake ClientHello (with optional random padding).
+    let full_payload = tls::build_client_hello_padded(&fake_sni, padding_cfg);
+
+    // Optionally split into N fragments.
+    let fake_payloads = if fragmentation_cfg.enabled && fragmentation_cfg.fragments > 1 {
+        split_payload(&full_payload, fragmentation_cfg.fragments)
+    } else {
+        vec![full_payload]
+    };
 
     let upstream_sock = if upstream_addr.is_ipv4() {
         socket2::Socket::new(
@@ -124,7 +168,9 @@ async fn handle_inner(
     cmd_tx
         .send(SnifferCommand::Register(Registration {
             conn_id,
-            fake_payload,
+            fake_payloads,
+            fake_sni: fake_sni.clone(),
+            fragment_delay_ms: fragmentation_cfg.delay_ms,
             result_tx,
             registered_tx,
         }))
@@ -185,8 +231,14 @@ async fn handle_inner(
     let confirmed = tokio::time::timeout(Duration::from_millis(confirmation_timeout_ms), async {
         while let Some(result) = result_rx.recv().await {
             match result {
-                SnifferResult::FakeConfirmed => return Ok(()),
-                SnifferResult::Failed(e) => return Err(HandlerError::SnifferFailed(e)),
+                SnifferResult::FakeConfirmed { sni } => {
+                    sni_tracker.record_success(&sni);
+                    return Ok(());
+                }
+                SnifferResult::Failed(e) => {
+                    sni_tracker.record_failure(&fake_sni);
+                    return Err(HandlerError::SnifferFailed(e));
+                }
             }
         }
         Err(HandlerError::Registration)
@@ -196,7 +248,10 @@ async fn handle_inner(
     match confirmed {
         Ok(Ok(())) => {}
         Ok(Err(e)) => return Err(e),
-        Err(_) => return Err(HandlerError::Timeout),
+        Err(_) => {
+            sni_tracker.record_failure(&fake_sni);
+            return Err(HandlerError::Timeout);
+        }
     }
 
     info!(port = local_addr.port(), "fake confirmed, starting relay");

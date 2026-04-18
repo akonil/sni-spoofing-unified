@@ -161,18 +161,18 @@ mod tests {
     #[test]
     fn test_debounce_basic() {
         // First call should log
-        let (should_log, suppressed) = should_log("test_key", 5);
-        assert!(should_log);
-        assert_eq!(suppressed, 0);
+        let (ok1, sup1) = should_log("test_key", 5);
+        assert!(ok1);
+        assert_eq!(sup1, 0);
 
         // Immediate second call should not log
-        let (should_log, suppressed) = should_log("test_key", 5);
-        assert!(!should_log);
-        assert_eq!(suppressed, 0);
+        let (ok2, sup2) = should_log("test_key", 5);
+        assert!(!ok2);
+        assert_eq!(sup2, 0);
 
         // Different key should log
-        let (should_log, suppressed) = should_log("test_key_2", 5);
-        assert!(should_log);
-        assert_eq!(suppressed, 0);
+        let (ok3, sup3) = should_log("test_key_2", 5);
+        assert!(ok3);
+        assert_eq!(sup3, 0);
     }
 }

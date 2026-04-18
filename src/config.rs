@@ -57,6 +57,61 @@ impl Default for TimeoutConfig {
     }
 }
 
+/// Adds random extra bytes to the fake ClientHello to vary its size fingerprint.
+/// Disabled by default (max_extra_bytes = 0).
+#[derive(Debug, Deserialize, Clone)]
+pub struct PayloadPaddingConfig {
+    /// Minimum extra bytes to add. Default: 0.
+    #[serde(default)]
+    pub min_extra_bytes: usize,
+    /// Maximum extra bytes to add. Default: 0 (disabled). Set > 0 to enable.
+    #[serde(default)]
+    pub max_extra_bytes: usize,
+}
+
+impl Default for PayloadPaddingConfig {
+    fn default() -> Self { Self { min_extra_bytes: 0, max_extra_bytes: 0 } }
+}
+
+impl PayloadPaddingConfig {
+    pub fn is_disabled(&self) -> bool { self.max_extra_bytes == 0 }
+}
+
+/// Splits the fake ClientHello into multiple TCP segments to confuse DPI reassembly.
+/// Disabled by default.
+#[derive(Debug, Deserialize, Clone)]
+pub struct FragmentationConfig {
+    /// Enable fragmentation. Default: false.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Number of fragments to split the fake payload into (2 or 3). Default: 2.
+    #[serde(default = "FragmentationConfig::default_fragments")]
+    pub fragments: usize,
+    /// Millisecond delay between fragments. Default: 1.
+    #[serde(default = "FragmentationConfig::default_delay_ms")]
+    pub delay_ms: u64,
+}
+
+impl FragmentationConfig {
+    fn default_fragments() -> usize { 2 }
+    fn default_delay_ms() -> u64 { 1 }
+}
+
+impl Default for FragmentationConfig {
+    fn default() -> Self { Self { enabled: false, fragments: 2, delay_ms: 1 } }
+}
+
+/// Advanced DPI-evasion options. All features are disabled by default.
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct AdvancedConfig {
+    /// Vary the fake ClientHello size to avoid fixed-length fingerprinting.
+    #[serde(default)]
+    pub payload_padding: PayloadPaddingConfig,
+    /// Split the fake ClientHello into multiple TCP segments.
+    #[serde(default)]
+    pub fragmentation: FragmentationConfig,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub listeners: Vec<ListenerConfig>,
@@ -71,17 +126,43 @@ pub struct Config {
     /// Connection timeout settings.
     #[serde(default)]
     pub timeouts: TimeoutConfig,
+    /// Advanced DPI-evasion features (payload padding, fragmentation).
+    #[serde(default)]
+    pub advanced: AdvancedConfig,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct ListenerConfig {
     pub listen: SocketAddr,
     pub connect: SocketAddr,
-    pub fake_sni: String,
+    /// Single fake SNI (legacy). Use fake_sni_pool for rotation across multiple SNIs.
+    #[serde(default)]
+    pub fake_sni: Option<String>,
+    /// Pool of fake SNIs — one is chosen at random per connection.
+    /// If set, takes precedence over fake_sni.
+    #[serde(default)]
+    pub fake_sni_pool: Vec<String>,
+    /// Max accepted connections per second for this listener. 0 = unlimited. Default: 0.
+    #[serde(default)]
+    pub max_connections_per_sec: u32,
     /// Gaming mode: smaller socket buffers for lower latency at the cost of throughput.
     /// Default: false (high-throughput mode).
     #[serde(default)]
     pub gaming_mode: bool,
+}
+
+impl ListenerConfig {
+    /// Returns the resolved SNI pool.
+    /// Backward compat: if only `fake_sni` is set, wraps it in a pool of one.
+    pub fn resolved_sni_pool(&self) -> Vec<String> {
+        if !self.fake_sni_pool.is_empty() {
+            return self.fake_sni_pool.clone();
+        }
+        if let Some(ref s) = self.fake_sni {
+            return vec![s.clone()];
+        }
+        vec![]
+    }
 }
 
 pub fn load(path: &str) -> Result<Config, crate::error::ConfigError> {
@@ -93,9 +174,18 @@ pub fn load(path: &str) -> Result<Config, crate::error::ConfigError> {
         return Err(crate::error::ConfigError::Empty);
     }
     for lc in &cfg.listeners {
-        if lc.fake_sni.len() > 219 {
-            return Err(crate::error::ConfigError::SniTooLong(lc.fake_sni.clone()));
+        let pool = lc.resolved_sni_pool();
+        if pool.is_empty() {
+            return Err(crate::error::ConfigError::MissingSni(lc.listen.to_string()));
         }
+        for sni in &pool {
+            if sni.len() > 219 {
+                return Err(crate::error::ConfigError::SniTooLong(sni.clone()));
+            }
+        }
+    }
+    if cfg.advanced.fragmentation.fragments > 3 {
+        return Err(crate::error::ConfigError::InvalidFragments);
     }
     Ok(cfg)
 }

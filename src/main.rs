@@ -11,10 +11,12 @@ mod relay;
 mod shutdown;
 mod sniffer;
 mod stats;
+mod wizard;
 
 use std::net::IpAddr;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
@@ -26,7 +28,32 @@ fn main() {
         )
         .init();
 
-    let config_path = std::env::args().nth(1).unwrap_or_else(|| "config.json".into());
+    let args: Vec<String> = std::env::args().collect();
+
+    // --wizard: interactive first-run config generator
+    if args.iter().any(|a| a == "--wizard") {
+        if let Err(e) = wizard::run_wizard() {
+            error!("{}", e);
+            std::process::exit(1);
+        }
+        return;
+    }
+
+    // --preset <name>: generate config from a named preset
+    if let Some(pos) = args.iter().position(|a| a == "--preset") {
+        let name = args.get(pos + 1).map(|s| s.as_str()).unwrap_or("");
+        if let Err(e) = wizard::apply_preset(name) {
+            error!("{}", e);
+            std::process::exit(1);
+        }
+        return;
+    }
+
+    let config_path = args.get(1)
+        .filter(|a| !a.starts_with("--"))
+        .cloned()
+        .unwrap_or_else(|| "config.json".into());
+
     let cfg = match config::load(&config_path) {
         Ok(c) => c,
         Err(e) => {
@@ -114,27 +141,52 @@ fn main() {
         })
         .expect("failed to spawn sniffer thread");
 
+    let sni_tracker = stats::SniTracker::new();
+
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
     rt.block_on(async {
         let signal_stop = stop.clone();
         tokio::spawn(async move {
             shutdown::wait_for_signal(signal_stop).await;
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
             std::process::exit(0);
         });
+
+        // Log per-SNI stats every 60 seconds.
+        let tracker_log = Arc::clone(&sni_tracker);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+                let snapshot = tracker_log.snapshot();
+                if !snapshot.is_empty() {
+                    info!("SNI stats (top 10 by success):");
+                    for (sni, ok, fail) in snapshot.iter().take(10) {
+                        info!("  {} → ok={} fail={}", sni, ok, fail);
+                    }
+                }
+            }
+        });
+
+        let padding_cfg = cfg.advanced.payload_padding.clone();
+        let fragmentation_cfg = cfg.advanced.fragmentation.clone();
 
         let mut handles = Vec::new();
         for lc in cfg.listeners {
             let tx = cmd_tx.clone();
             let lip = resolve_local_ip(lc.connect.ip()).unwrap_or(local_ips[0]);
             let listener_stats = stats::Stats::new();
+            let tracker = Arc::clone(&sni_tracker);
             handles.push(tokio::spawn(listener::run_listener(
                 lc,
                 lip,
                 tx,
                 listener_stats,
+                tracker,
                 cfg.timeouts.handshake_timeout_ms,
                 cfg.timeouts.confirmation_timeout_ms,
+                padding_cfg.clone(),
+                fragmentation_cfg.clone(),
             )));
         }
 

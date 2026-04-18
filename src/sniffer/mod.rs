@@ -30,14 +30,21 @@ pub trait RawBackend: Send + 'static {
 struct ConnState {
     isn: Option<u32>,
     server_isn: Option<u32>,
-    fake_payload: Vec<u8>,
+    /// One or more fragments of the fake ClientHello.
+    fake_payloads: Vec<Vec<u8>>,
+    /// The SNI that was chosen for this connection (for tracking).
+    fake_sni: String,
+    /// Delay between fragments in milliseconds (0 = no delay).
+    fragment_delay_ms: u64,
     fake_injected: bool,
     result_tx: tokio::sync::mpsc::Sender<SnifferResult>,
 }
 
-fn build_fake_frame(
+/// Build a fake TCP frame at an explicit sequence number.
+/// The caller is responsible for computing the correct `seq` value.
+fn build_fake_frame_at_seq(
     template: &[u8],
-    isn: u32,
+    seq: u32,
     fake_payload: &[u8],
     ip_ver: IpVersion,
     link_len: usize,
@@ -79,8 +86,7 @@ fn build_fake_frame(
 
     let tcp_hdr = &mut out[tcp_off..];
     tcp::add_flag(tcp_hdr, tcp::PSH);
-    let fake_seq = isn.wrapping_add(1).wrapping_sub(fake_payload.len() as u32);
-    tcp::set_seq_num(tcp_hdr, fake_seq);
+    tcp::set_seq_num(tcp_hdr, seq);
 
     if !skip_checksum {
         match ip_ver {
@@ -221,7 +227,9 @@ pub fn run_sniffer(
                     connections.insert(reg.conn_id, ConnState {
                         isn: None,
                         server_isn: None,
-                        fake_payload: reg.fake_payload,
+                        fake_payloads: reg.fake_payloads,
+                        fake_sni: reg.fake_sni,
+                        fragment_delay_ms: reg.fragment_delay_ms,
                         fake_injected: false,
                         result_tx: reg.result_tx,
                     });
@@ -298,28 +306,56 @@ pub fn run_sniffer(
                     conn.fake_injected = true;
                     debug!(port = parsed.outbound_id.src_port, "3rd ACK captured, injecting fake");
 
-                    let fake_frame = build_fake_frame(
-                        frame, isn, &conn.fake_payload, parsed.ip_version, link_len, skip_checksum,
-                    );
                     if !jitter.is_disabled() {
                         let delay = rand::thread_rng()
                             .gen_range(jitter.min_ms..=jitter.max_ms.max(jitter.min_ms));
                         thread::sleep(Duration::from_millis(delay));
                     }
 
-                    if let Err(e) = backend.send_frame(&fake_frame) {
-                        warn!(port = parsed.outbound_id.src_port, "inject failed: {}", e);
-                        let _ = conn.result_tx.blocking_send(SnifferResult::Failed(
-                            format!("inject failed: {}", e),
-                        ));
-                        connections.remove(&parsed.outbound_id);
+                    // Build all fragment frames while holding conn borrow, then drop the borrow
+                    // before any connections.remove() calls (borrow checker requirement).
+                    let total_len: usize = conn.fake_payloads.iter().map(|p| p.len()).sum();
+                    let num_fragments = conn.fake_payloads.len();
+                    let fragment_delay_ms = conn.fragment_delay_ms;
+                    let fake_frames: Vec<Vec<u8>> = {
+                        let mut frames = Vec::with_capacity(num_fragments);
+                        let mut running_offset: u32 = 0;
+                        for frag in &conn.fake_payloads {
+                            let frag_seq = isn
+                                .wrapping_add(1)
+                                .wrapping_sub(total_len as u32)
+                                .wrapping_add(running_offset);
+                            frames.push(build_fake_frame_at_seq(
+                                frame, frag_seq, frag, parsed.ip_version, link_len, skip_checksum,
+                            ));
+                            running_offset += frag.len() as u32;
+                        }
+                        frames
+                    };
+                    // conn borrow released here — safe to call connections.remove below.
+
+                    let mut inject_error: Option<String> = None;
+                    for (i, fake_frame) in fake_frames.iter().enumerate() {
+                        if i > 0 && fragment_delay_ms > 0 {
+                            thread::sleep(Duration::from_millis(fragment_delay_ms));
+                        }
+                        if let Err(e) = backend.send_frame(fake_frame) {
+                            warn!(port = parsed.outbound_id.src_port, "inject failed: {}", e);
+                            inject_error = Some(format!("inject failed: {}", e));
+                            break;
+                        }
+                    }
+
+                    if let Some(err) = inject_error {
+                        if let Some(c) = connections.remove(&parsed.outbound_id) {
+                            let _ = c.result_tx.blocking_send(SnifferResult::Failed(err));
+                        }
                     } else {
-                        let fake_seq =
-                            isn.wrapping_add(1).wrapping_sub(conn.fake_payload.len() as u32);
                         info!(
                             port = parsed.outbound_id.src_port,
-                            fake_seq = fake_seq,
-                            isn = isn,
+                            total_len,
+                            isn,
+                            fragments = num_fragments,
                             "fake ClientHello injected"
                         );
                     }
@@ -338,7 +374,8 @@ pub fn run_sniffer(
                             port = parsed.outbound_id.src_port,
                             "server ACK confirmed, fake was ignored"
                         );
-                        let _ = conn.result_tx.blocking_send(SnifferResult::FakeConfirmed);
+                        let sni = conn.fake_sni.clone();
+                        let _ = conn.result_tx.blocking_send(SnifferResult::FakeConfirmed { sni });
                         connections.remove(&parsed.outbound_id);
                         continue;
                     }
