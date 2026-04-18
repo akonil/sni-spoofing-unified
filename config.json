@@ -1,0 +1,19 @@
+{
+  "debounce_logs": true,
+  "jitter": {
+    "min_ms": 1,
+    "max_ms": 8
+  },
+  "timeouts": {
+    "handshake_timeout_ms": 5000,
+    "confirmation_timeout_ms": 2000
+  },
+  "listeners": [
+    {
+      "listen": "0.0.0.0:40443",
+      "connect": "104.19.229.21:443",
+      "fake_sni": "www.hcaptcha.com",
+      "gaming_mode": false
+    }
+  ]
+}
