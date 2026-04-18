@@ -4,7 +4,48 @@
 
 ---
 
-## Linux
+## Option 1: Download Prebuilt Binaries (Recommended)
+
+Download the latest release from the [Releases](https://github.com/akonil/sni-spoofing-unified/releases) page.
+
+### Linux
+
+```bash
+# Download and extract
+wget https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-linux-x64.tar.gz
+tar xzf sni-spoof-linux-x64.tar.gz
+
+# Edit config.json, then run
+sudo ./sni-spoof-linux-x64 config.json
+```
+
+### macOS (Intel)
+
+```bash
+curl -L -o sni-spoof-macos-x64.tar.gz https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-macos-x64.tar.gz
+tar xzf sni-spoof-macos-x64.tar.gz
+sudo ./sni-spoof-macos-x64 config.json
+```
+
+### macOS (Apple Silicon)
+
+```bash
+curl -L -o sni-spoof-macos-arm64.tar.gz https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-macos-arm64.tar.gz
+tar xzf sni-spoof-macos-arm64.tar.gz
+sudo ./sni-spoof-macos-arm64 config.json
+```
+
+### Windows
+
+1. Download `sni-spoof-windows-x64.zip` from [Releases](https://github.com/akonil/sni-spoofing-unified/releases)
+2. Extract and edit `config.json`
+3. Run as Administrator: `sni-spoof-windows-x64.exe config.json`
+
+---
+
+## Option 2: Build from Source
+
+### Linux
 
 ### 1. Install Rust
 
@@ -246,7 +287,48 @@ The script automatically:
 
 ---
 
-## لینوکس
+## گزینه ۱: دانلود فایل‌های از پیش ساخته‌شده (توصیه‌شده)
+
+جدیدترین نسخه را از صفحه [Releases](https://github.com/akonil/sni-spoofing-unified/releases) دانلود کنید.
+
+### لینوکس
+
+```bash
+# دانلود و استخراج
+wget https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-linux-x64.tar.gz
+tar xzf sni-spoof-linux-x64.tar.gz
+
+# فایل config.json را ویرایش کنید، سپس اجرا
+sudo ./sni-spoof-linux-x64 config.json
+```
+
+### macOS (Intel)
+
+```bash
+curl -L -o sni-spoof-macos-x64.tar.gz https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-macos-x64.tar.gz
+tar xzf sni-spoof-macos-x64.tar.gz
+sudo ./sni-spoof-macos-x64 config.json
+```
+
+### macOS (Apple Silicon)
+
+```bash
+curl -L -o sni-spoof-macos-arm64.tar.gz https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-macos-arm64.tar.gz
+tar xzf sni-spoof-macos-arm64.tar.gz
+sudo ./sni-spoof-macos-arm64 config.json
+```
+
+### ویندوز
+
+۱. `sni-spoof-windows-x64.zip` را از [Releases](https://github.com/akonil/sni-spoofing-unified/releases) دانلود کنید
+۲. استخراج کرده و `config.json` را ویرایش کنید
+۳. به عنوان Administrator اجرا کنید: `sni-spoof-windows-x64.exe config.json`
+
+---
+
+## گزینه ۲: ساخت از سورس
+
+### لینوکس
 
 ### ۱. نصب Rust
 

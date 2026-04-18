@@ -29,11 +29,58 @@ A cross-platform, high-performance SNI spoofing proxy written in Rust. Bypasses 
 | macOS    | `sudo` (BPF device access) |
 | Windows  | Run as **Administrator** (WinDivert) |
 
-**Build tools:** [Rust](https://rustup.rs) ≥ 1.70
+**Build tools (optional):** [Rust](https://rustup.rs) ≥ 1.70 — only needed if building from source
 
 ---
 
-## Build
+## Quick Start (Prebuilt Binaries)
+
+Download the latest release for your platform from the [Releases](https://github.com/akonil/sni-spoofing-unified/releases) page.
+
+### Linux
+
+```bash
+# Download and extract
+wget https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-linux-x64.tar.gz
+tar xzf sni-spoof-linux-x64.tar.gz
+
+# Edit config.json, then run with sudo
+sudo ./sni-spoof-linux-x64 config.json
+```
+
+### macOS (Intel)
+
+```bash
+# Download and extract
+curl -L -o sni-spoof-macos-x64.tar.gz https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-macos-x64.tar.gz
+tar xzf sni-spoof-macos-x64.tar.gz
+
+# Edit config.json, then run with sudo
+sudo ./sni-spoof-macos-x64 config.json
+```
+
+### macOS (Apple Silicon)
+
+```bash
+# Download and extract
+curl -L -o sni-spoof-macos-arm64.tar.gz https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-macos-arm64.tar.gz
+tar xzf sni-spoof-macos-arm64.tar.gz
+
+# Edit config.json, then run with sudo
+sudo ./sni-spoof-macos-arm64 config.json
+```
+
+### Windows
+
+1. Download `sni-spoof-windows-x64.zip` from [Releases](https://github.com/akonil/sni-spoofing-unified/releases)
+2. Extract the zip file
+3. Edit `config.json` with your settings
+4. Right-click Command Prompt → **Run as Administrator**
+5. Run: `sni-spoof-windows-x64.exe config.json`
+
+---
+
+## Build from Source
 
 ```bash
 # Debug build (for development)
