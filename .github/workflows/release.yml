@@ -63,39 +63,12 @@ jobs:
           name: linux-x64
           path: sni-spoof-linux-x64.tar.gz
 
-  build-macos-x64:
-    needs: create-release
-    runs-on: macos-13
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: brew install libpcap
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build release
-        run: cargo build --release
-
-      - name: Package binary
-        run: |
-          mkdir -p dist
-          cp target/release/sni-spoof dist/sni-spoof-macos-x64
-          cp config.json dist/
-          cp README.md dist/
-          cp LICENSE dist/
-          tar czf sni-spoof-macos-x64.tar.gz -C dist .
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-x64
-          path: sni-spoof-macos-x64.tar.gz
-
-  build-macos-arm:
+  build-macos:
     needs: create-release
     runs-on: macos-14
+    strategy:
+      matrix:
+        target: [x86_64-apple-darwin, aarch64-apple-darwin]
     steps:
       - uses: actions/checkout@v4
 
@@ -104,24 +77,37 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - name: Build release
-        run: cargo build --release
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Set binary name
+        id: binary
+        run: |
+          if [ "${{ matrix.target }}" = "x86_64-apple-darwin" ]; then
+            echo "name=sni-spoof-macos-x64" >> $GITHUB_OUTPUT
+            echo "artifact=macos-x64" >> $GITHUB_OUTPUT
+          else
+            echo "name=sni-spoof-macos-arm64" >> $GITHUB_OUTPUT
+            echo "artifact=macos-arm64" >> $GITHUB_OUTPUT
+          fi
 
       - name: Package binary
         run: |
           mkdir -p dist
-          cp target/release/sni-spoof dist/sni-spoof-macos-arm64
+          cp target/${{ matrix.target }}/release/sni-spoof dist/${{ steps.binary.outputs.name }}
           cp config.json dist/
           cp README.md dist/
           cp LICENSE dist/
-          tar czf sni-spoof-macos-arm64.tar.gz -C dist .
+          tar czf ${{ steps.binary.outputs.name }}.tar.gz -C dist .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-arm64
-          path: sni-spoof-macos-arm64.tar.gz
+          name: ${{ steps.binary.outputs.artifact }}
+          path: ${{ steps.binary.outputs.name }}.tar.gz
 
   build-windows:
     needs: create-release
@@ -151,7 +137,7 @@ jobs:
           path: sni-spoof-windows-x64.zip
 
   publish-release:
-    needs: [create-release, build-linux, build-macos-x64, build-macos-arm, build-windows]
+    needs: [create-release, build-linux, build-macos, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
