@@ -1,6 +1,6 @@
 [package]
 name = "sni-spoof"
-version = "0.2.0"
+version = "0.2.2"
 edition = "2021"
 description = "Cross-platform SNI spoofing proxy — all platforms, gaming mode, debounced logging"
 

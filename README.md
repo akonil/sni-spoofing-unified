@@ -4,20 +4,118 @@
 
 ---
 
-A cross-platform, high-performance SNI spoofing proxy written in Rust. Bypasses DPI-based censorship by injecting a fake TLS ClientHello with a decoy SNI during the TCP handshake, then relaying traffic transparently.
-
-**Supported platforms:** Linux · macOS · Windows
+A cross-platform SNI spoofing proxy written in Rust. Helps access content blocked by network filtering by spoofing the domain name (SNI) during connection setup. Works on **Linux**, **macOS**, and **Windows**.
 
 ---
 
+# PART 1: FOR REGULAR USERS
+
+## Quick Start (30 seconds)
+
+### Option A: Interactive Setup (Recommended)
+
+```bash
+sudo ./sni-spoof --wizard
+```
+
+Answer a few simple questions and the tool creates a config for you.
+
+### Option B: Quick Preset
+
+```bash
+./sni-spoof --preset hcaptcha   # Recommended for most users
+./sni-spoof --preset cloudflare # Alternative
+./sni-spoof --preset stealth    # For stricter filters
+```
+
+---
+
+## Get the Binary
+
+Download the latest version for your system from [Releases](https://github.com/akonil/sni-spoofing-unified/releases):
+
+**Linux:**
+```bash
+wget https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-linux-x64.tar.gz
+tar xzf sni-spoof-linux-x64.tar.gz
+sudo ./sni-spoof-linux-x64 --wizard
+```
+
+**macOS (Intel or Apple Silicon):**
+```bash
+# Intel
+curl -L -o sni-spoof-macos-x64.tar.gz https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-macos-x64.tar.gz
+tar xzf sni-spoof-macos-x64.tar.gz
+sudo ./sni-spoof-macos-x64 --wizard
+
+# Apple Silicon
+curl -L -o sni-spoof-macos-arm64.tar.gz https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-macos-arm64.tar.gz
+tar xzf sni-spoof-macos-arm64.tar.gz
+sudo ./sni-spoof-macos-arm64 --wizard
+```
+
+**Windows:** Download `sni-spoof-windows-x64.zip`, extract, then run `cmd` as Administrator and type:
+```cmd
+.\sni-spoof-windows-x64.exe --wizard
+```
+
+---
+
+## Basic Configuration
+
+If you prefer to edit the config file directly, create `config.json`:
+
+```json
+{
+  "listeners": [
+    {
+      "listen": "0.0.0.0:40443",
+      "connect": "YOUR_SERVER_IP:443",
+      "fake_sni_pool": ["www.speedtest.net", "www.google.com"]
+    }
+  ]
+}
+```
+
+Replace `YOUR_SERVER_IP` with your target server's IP address.
+
+Then run:
+```bash
+sudo ./sni-spoof config.json
+```
+
+---
+
+## Test It Works
+
+1. Point your browser/app to `127.0.0.1:40443` (or whatever port you set in `listen`)
+2. If you see connections in the logs, it's working!
+
+---
+
+## Need Help?
+
+| Problem | Solution |
+|---------|----------|
+| "Permission denied" | Run with `sudo` (or use launcher script: `./run.sh`) |
+| Can't connect | Check that `YOUR_SERVER_IP` is correct in config |
+| "Config file not found" | Make sure `config.json` exists in the current directory |
+
+---
+
+---
+
+# PART 2: FOR ADVANCED USERS
+
 ## How It Works
 
-1. A client connects to the proxy's local listen address.
-2. The proxy opens a TCP connection to the upstream server.
-3. During the handshake, a forged ClientHello packet with a fake SNI (e.g. `speedtest.net`) is injected at a deliberately wrong sequence number.
-4. The DPI firewall sees the decoy SNI and allows the connection through.
-5. The server discards the forged packet (wrong seq) and responds to the real one.
-6. The proxy relays data bidirectionally between the client and the server.
+SNI (Server Name Indication) is sent unencrypted during the TLS handshake. DPI firewalls inspect this to block connections. This tool:
+
+1. Intercepts the real TLS ClientHello from your client
+2. Injects a **fake ClientHello** with a decoy SNI (e.g., `speedtest.net`) at a deliberately wrong TCP sequence number
+3. DPI sees the decoy SNI and allows the connection
+4. The real server ignores the fake packet (wrong sequence) and processes the real one
+5. Data flows transparently between client and server
 
 ---
 
@@ -29,96 +127,31 @@ A cross-platform, high-performance SNI spoofing proxy written in Rust. Bypasses 
 | macOS    | `sudo` (BPF device access) |
 | Windows  | Run as **Administrator** (WinDivert) |
 
-**Build tools (optional):** [Rust](https://rustup.rs) ≥ 1.70 — only needed if building from source
-
----
-
-## Quick Start (Prebuilt Binaries)
-
-Download the latest release for your platform from the [Releases](https://github.com/akonil/sni-spoofing-unified/releases) page.
-
-### Linux
-
-```bash
-# Download and extract
-wget https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-linux-x64.tar.gz
-tar xzf sni-spoof-linux-x64.tar.gz
-
-# Edit config.json, then run with sudo
-sudo ./sni-spoof-linux-x64 config.json
-```
-
-### macOS (Intel)
-
-```bash
-# Download and extract
-curl -L -o sni-spoof-macos-x64.tar.gz https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-macos-x64.tar.gz
-tar xzf sni-spoof-macos-x64.tar.gz
-
-# Edit config.json, then run with sudo
-sudo ./sni-spoof-macos-x64 config.json
-```
-
-### macOS (Apple Silicon)
-
-```bash
-# Download and extract
-curl -L -o sni-spoof-macos-arm64.tar.gz https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-macos-arm64.tar.gz
-tar xzf sni-spoof-macos-arm64.tar.gz
-
-# Edit config.json, then run with sudo
-sudo ./sni-spoof-macos-arm64 config.json
-```
-
-### Windows
-
-1. Download `sni-spoof-windows-x64.zip` from [Releases](https://github.com/akonil/sni-spoofing-unified/releases)
-2. Extract the zip file
-3. Edit `config.json` with your settings
-4. Right-click Command Prompt → **Run as Administrator**
-5. Run: `sni-spoof-windows-x64.exe config.json`
+**Build tools:** [Rust](https://rustup.rs) ≥ 1.70 (optional, only if building from source)
 
 ---
 
 ## Build from Source
 
+### Debug build (for development):
 ```bash
-# Debug build (for development)
 cargo build
+```
 
-# Release build (optimized, recommended for production)
+### Release build (optimized, recommended):
+```bash
 cargo build --release
 ```
 
-Binary location after release build:
+Binary location:
 - Linux/macOS: `target/release/sni-spoof`
 - Windows: `target\release\sni-spoof.exe`
 
 ---
 
-## Quick Start: --wizard or --preset
+## Advanced Configuration
 
-For non-expert users, use the interactive wizard:
-
-```bash
-sudo ./sni-spoof --wizard
-```
-
-This prompts you for upstream IP, listen port, and SNI pool, then generates `config.json`.
-
-Alternatively, use a preset:
-
-```bash
-./sni-spoof --preset hcaptcha   # hCaptcha SNI pool (recommended)
-./sni-spoof --preset cloudflare # Cloudflare SNI pool
-./sni-spoof --preset stealth    # hCaptcha + fragmentation enabled
-```
-
----
-
-## Configuration
-
-Create or edit `config.json` in the project directory:
+Complete configuration schema:
 
 ```json
 {
@@ -147,52 +180,41 @@ Create or edit `config.json` in the project directory:
 }
 ```
 
-### Config Fields
-
-#### Top-level
+### Global Configuration Fields
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `debounce_logs` | bool | `false` | Suppress repeated identical log messages within a 5-second window. Useful in production to avoid log flooding when many connections fail. Keep `false` during debugging. |
-| `jitter.min_ms` | number | `1` | Minimum random delay (ms) injected before sending the fake ClientHello. |
-| `jitter.max_ms` | number | `8` | Maximum random delay (ms). Set to `0` to disable jitter entirely. Jitter is enabled by default because it defeats timing-based DPI fingerprinting. |
-| `timeouts.handshake_timeout_ms` | number | `5000` | TCP handshake timeout in milliseconds. Increase if connecting to slow/distant servers; decrease for faster failure detection. |
-| `timeouts.confirmation_timeout_ms` | number | `2000` | Time to wait (ms) for the fake packet injection to be confirmed by the sniffer. |
-| `listeners` | array | — | One or more listener definitions (see below). |
+| `debounce_logs` | bool | `false` | Suppress repeated identical log messages within a 5-second window. Useful in production to avoid log flooding. Keep `false` during debugging. |
+| `jitter.min_ms` | number | `1` | Minimum random delay (ms) before sending fake ClientHello. Defeats timing-based DPI analysis. |
+| `jitter.max_ms` | number | `8` | Maximum random delay (ms). Set to `0` to disable jitter (not recommended). |
+| `timeouts.handshake_timeout_ms` | number | `5000` | TCP handshake timeout (ms). Increase for slow servers, decrease for faster failure detection. |
+| `timeouts.confirmation_timeout_ms` | number | `2000` | Time to wait (ms) for fake packet injection confirmation. Increase if sniffer is slow. |
+| `listeners` | array | — | Array of listener definitions (see below). |
 
-#### Per-listener
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `listen` | string | — | Local address and port the proxy listens on. Use `0.0.0.0` to accept from all interfaces. |
-| `connect` | string | — | Upstream server IP and port to connect to (the real destination). |
-| `fake_sni` | string | — | (Legacy) Single decoy hostname. Use `fake_sni_pool` instead for rotation across multiple SNIs. |
-| `fake_sni_pool` | array | `[]` | **NEW:** Pool of decoy hostnames. One is chosen at random per connection. If empty, falls back to `fake_sni`. Popular domains: `speedtest.net`, `www.google.com`, `security.vercel.com`, `cdn.cloudflare.com`. |
-| `max_connections_per_sec` | number | `0` | **NEW:** Rate limit for incoming connections (0 = unlimited). Useful to prevent connection storms. |
-| `gaming_mode` | bool | `false` | When `true`: uses small socket buffers (32 KB) for lower latency. When `false`: uses large buffers (256 KB) for higher throughput. Enable for gaming or real-time apps; leave off for downloads or streaming. |
-
-#### Advanced DPI Evasion (optional)
+### Per-Listener Fields
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `advanced.payload_padding.min_extra_bytes` | number | `0` | Minimum random bytes to add to fake ClientHello (0 = disabled). |
-| `advanced.payload_padding.max_extra_bytes` | number | `0` | Maximum random bytes to add (0 = disabled). Varies packet size to defeat fingerprinting. |
-| `advanced.fragmentation.enabled` | bool | `false` | Split fake ClientHello into N TCP segments to confuse DPI reassembly. |
-| `advanced.fragmentation.fragments` | number | `2` | Number of fragments (2 or 3, default 2). |
-| `advanced.fragmentation.delay_ms` | number | `1` | Millisecond delay between fragments. |
+| `listen` | string | — | Local address:port to accept connections on. Use `0.0.0.0:PORT` for all interfaces. |
+| `connect` | string | — | Upstream server IP:port (real destination). |
+| `fake_sni` | string | — | (Legacy) Single decoy SNI. Deprecated; use `fake_sni_pool` instead. |
+| `fake_sni_pool` | array | `[]` | Array of decoy hostnames. One chosen randomly per connection. Falls back to `fake_sni` if empty. Examples: `speedtest.net`, `www.google.com`, `security.vercel.com`. |
+| `max_connections_per_sec` | number | `0` | Rate limit (0 = unlimited). Prevents connection floods. |
+| `gaming_mode` | bool | `false` | `true`: 32 KB buffers (low latency). `false`: 256 KB buffers (high throughput). |
 
-### Inject Jitter
+### Advanced DPI Evasion Fields
 
-Jitter adds a small random delay (default 1–8 ms) between detecting the TCP handshake completion and sending the fake ClientHello. This randomness makes it much harder for DPI systems to identify the spoofing technique via timing analysis.
-
-To disable jitter (not recommended):
-```json
-"jitter": { "min_ms": 0, "max_ms": 0 }
-```
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `advanced.payload_padding.min_extra_bytes` | number | `0` | Minimum random bytes appended to fake ClientHello. |
+| `advanced.payload_padding.max_extra_bytes` | number | `0` | Maximum random bytes appended. `0` = disabled. Varies packet size to defeat fingerprinting. |
+| `advanced.fragmentation.enabled` | bool | `false` | Split fake ClientHello into N TCP segments. Confuses DPI reassembly logic. |
+| `advanced.fragmentation.fragments` | number | `2` | Number of segments (2 or 3). More fragments = harder to reassemble. |
+| `advanced.fragmentation.delay_ms` | number | `1` | Millisecond delay between segments. Small delay (1-5 ms) helps defeat timeout-based reassembly. |
 
 ---
 
-## Advanced DPI Evasion Features
+## Advanced DPI Evasion Techniques
 
 ### 1. SNI Pool Rotation
 
@@ -242,91 +264,117 @@ Makes reassembly harder for DPI engines. Each fragment arrives as a separate TCP
 
 ---
 
-## Connection Stats
-
-When running at `RUST_LOG=info`, each connection logs its stats on open and close:
-
-```
-INFO connection opened  upstream=172.67.139.236:443 active=3 total=47
-INFO connection closed  upstream=172.67.139.236:443 active=2 total=47
-```
-
-- **active** — connections currently relaying data
-- **total** — cumulative connections since startup
-
 ---
 
-### Multiple Listeners
+## Multiple Listeners
 
-You can define multiple listeners in a single config to forward different ports:
+Define multiple listeners to proxy different ports in one config:
 
 ```json
 {
-  "debounce_logs": false,
-  "jitter": { "min_ms": 1, "max_ms": 8 },
-  "timeouts": { "handshake_timeout_ms": 5000, "confirmation_timeout_ms": 2000 },
   "listeners": [
     {
       "listen": "0.0.0.0:40443",
       "connect": "172.67.139.236:443",
-      "fake_sni": "security.vercel.com",
-      "gaming_mode": false
+      "fake_sni_pool": ["security.vercel.com", "cdn.vercel.com"]
     },
     {
       "listen": "0.0.0.0:40080",
       "connect": "172.67.139.236:80",
-      "fake_sni": "speedtest.net",
-      "gaming_mode": false
+      "fake_sni_pool": ["speedtest.net", "www.google.com"]
     }
   ]
 }
 ```
 
+Each listener operates independently with its own SNI pool and rate limiting.
+
 ---
 
-## Running
+## Running the Proxy
 
 ```bash
-# Run with default config.json in current directory
-sudo ./target/release/sni-spoof
+# Default (read config.json in current directory)
+sudo ./sni-spoof
 
-# Run with a specific config file
-sudo ./target/release/sni-spoof /path/to/config.json
+# Custom config file
+sudo ./sni-spoof /path/to/config.json
 
-# Control log verbosity (error / warn / info / debug / trace)
-RUST_LOG=info sudo ./target/release/sni-spoof config.json
+# With verbose logging
+RUST_LOG=info sudo ./sni-spoof config.json
 ```
 
-**Windows:** Open Command Prompt as Administrator, then:
+**Windows (run Command Prompt as Administrator first):**
 ```cmd
-.\target\release\sni-spoof.exe config.json
+.\sni-spoof.exe config.json
 ```
-
-### Choosing a fake_sni
-
-The fake SNI should be a domain that:
-- Is popular and known to be accessible (not blocked)
-- Uses HTTPS (port 443) in practice
-- Examples: `www.speedtest.net`, `www.google.com`, `security.vercel.com`, `cdn.cloudflare.com`
 
 ---
 
-## Logging
+## Monitoring and Statistics
 
-Logging is controlled by the `RUST_LOG` environment variable:
+### Connection Statistics
 
-| Level | What you see |
-|-------|-------------|
-| `error` | Only fatal errors |
-| `warn` (default) | Errors + connection warnings |
-| `info` | Startup info + per-connection events |
-| `debug` | Detailed per-packet tracing |
+Enable info logging to see per-connection metrics:
 
 ```bash
-RUST_LOG=info sudo ./target/release/sni-spoof config.json
+RUST_LOG=info sudo ./sni-spoof config.json
 ```
 
-When `debounce_logs: true`, repeated `warn`/`error` messages for the same event type are suppressed and printed at most once every 5 seconds, with a count of how many were skipped.
+Output:
+```
+INFO connection opened  upstream=172.67.139.236:443 active=3 total=47
+INFO connection closed  upstream=172.67.139.236:443 active=2 total=47
+```
+
+- **active** — concurrent connections
+- **total** — cumulative since startup
+
+### SNI Success/Failure Stats
+
+When using `fake_sni_pool` with multiple SNIs, the proxy logs success/failure counts every 60 seconds:
+
+```
+INFO SNI stats (top 10 by success):
+INFO   security.vercel.com → ok=142 fail=3
+INFO   cdn.vercel.com → ok=98 fail=1
+```
+
+Use this to identify which SNI domains work best in your region.
+
+---
+
+## Logging Levels
+
+Control verbosity with `RUST_LOG`:
+
+| Level | Content |
+|-------|---------|
+| `error` | Fatal errors only |
+| `warn` | Errors + connection warnings (default) |
+| `info` | Startup, per-connection events, SNI stats |
+| `debug` | Detailed per-packet tracing |
+| `trace` | Very verbose internal state |
+
+Example:
+```bash
+RUST_LOG=debug sudo ./sni-spoof config.json
+```
+
+When `debounce_logs: true`, repeated warnings are suppressed and printed once every 5 seconds with a count of skipped messages.
+
+---
+
+## Choosing SNI Domains
+
+When selecting `fake_sni_pool` domains:
+
+- **Popular domains** work best: `www.speedtest.net`, `www.google.com`, `security.vercel.com`
+- **Must support HTTPS** (port 443)
+- **Must not be blocked** in your region
+- **Rotate multiple domains** for better DPI evasion
+
+If one SNI stops working, try others. The SNI stats output helps identify what works.
 
 ---
 

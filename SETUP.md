@@ -4,83 +4,142 @@
 
 ---
 
-## Quick Start for Non-Experts: --wizard
+# PART 1: FOR REGULAR USERS
 
-If you don't want to manually edit JSON, use the interactive wizard:
+## 30-Second Setup
+
+**Option A: Interactive Wizard (Easiest)**
 
 ```bash
 sudo ./sni-spoof --wizard
 ```
 
-It will ask you:
-1. **Upstream server IP:port** — e.g., `1.2.3.4:443`
-2. **Local listen port** — defaults to `40443`
-3. **SNI pool** — choose from hCaptcha (recommended), Cloudflare, or custom
-4. **Enable DPI evasion** — enable fragmentation + payload padding
+Just answer the prompts. The tool creates `config.json` automatically.
 
-Then generates `config.json` and exits. Run again with your config.
-
----
-
-## Quick Start for Scripts: --preset
-
-Pre-configured templates for common use cases:
+**Option B: Pre-made Presets**
 
 ```bash
-# hCaptcha pool (6 SNIs, no fragmentation)
-./sni-spoof --preset hcaptcha
-
-# Cloudflare pool (4 SNIs, no fragmentation)
-./sni-spoof --preset cloudflare
-
-# Stealth mode (hCaptcha pool + fragmentation enabled + padding)
-./sni-spoof --preset stealth
+./sni-spoof --preset hcaptcha   # Recommended
+./sni-spoof --preset cloudflare # Alternative  
+./sni-spoof --preset stealth    # For strict filters
 ```
 
-Presets generate `config.json` with placeholder `UPSTREAM_IP`. Edit the file and replace it with your actual upstream IP, then run.
+This generates a ready-to-use config. Edit `config.json` and replace `UPSTREAM_IP` with your server IP.
 
 ---
 
-## Option 1: Download Prebuilt Binaries (Recommended)
+## Download & Run
 
-Download the latest release from the [Releases](https://github.com/akonil/sni-spoofing-unified/releases) page.
+### Step 1: Get the Binary
 
-### Linux
+Download from [Releases](https://github.com/akonil/sni-spoofing-unified/releases) for your platform:
 
+**Linux**
 ```bash
-# Download and extract
 wget https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-linux-x64.tar.gz
 tar xzf sni-spoof-linux-x64.tar.gz
+```
 
-# Edit config.json, then run
+**macOS (Intel)**
+```bash
+curl -L -o sni-spoof-macos-x64.tar.gz https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-macos-x64.tar.gz
+tar xzf sni-spoof-macos-x64.tar.gz
+```
+
+**macOS (Apple Silicon)**
+```bash
+curl -L -o sni-spoof-macos-arm64.tar.gz https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-macos-arm64.tar.gz
+tar xzf sni-spoof-macos-arm64.tar.gz
+```
+
+**Windows:** Download `sni-spoof-windows-x64.zip`, extract it.
+
+### Step 2: Run Setup
+
+```bash
+# Linux / macOS
+sudo ./sni-spoof --wizard
+
+# Windows (run cmd as Administrator first)
+.\sni-spoof-windows-x64.exe --wizard
+```
+
+The wizard asks:
+1. Server IP:port (e.g., `1.2.3.4:443`)
+2. Local port (default: `40443`)
+3. Which SNI domain pool to use
+4. DPI evasion mode (yes/no)
+
+Then it creates `config.json` and starts.
+
+### Step 3: Use It
+
+Point your browser, app, or VPN to `127.0.0.1:40443`. Done!
+
+---
+
+## Troubleshooting (Simple)
+
+| Error | Fix |
+|-------|-----|
+| "sudo: command not found" or "not admin" | Use `sudo` (Linux/macOS) or run cmd as Administrator (Windows) |
+| Can't reach server | Check the server IP in config is correct |
+| Connection refused | Make sure the proxy is running and listening on the right port |
+
+---
+
+---
+
+# PART 2: FOR ADVANCED USERS
+
+## Manual Setup: Download Prebuilt Binaries
+
+### Platform-Specific Instructions
+
+**Linux:**
+```bash
+wget https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-linux-x64.tar.gz
+tar xzf sni-spoof-linux-x64.tar.gz
 sudo ./sni-spoof-linux-x64 config.json
 ```
 
-### macOS (Intel)
-
+**macOS (Intel):**
 ```bash
 curl -L -o sni-spoof-macos-x64.tar.gz https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-macos-x64.tar.gz
 tar xzf sni-spoof-macos-x64.tar.gz
 sudo ./sni-spoof-macos-x64 config.json
 ```
 
-### macOS (Apple Silicon)
-
+**macOS (Apple Silicon):**
 ```bash
 curl -L -o sni-spoof-macos-arm64.tar.gz https://github.com/akonil/sni-spoofing-unified/releases/latest/download/sni-spoof-macos-arm64.tar.gz
 tar xzf sni-spoof-macos-arm64.tar.gz
 sudo ./sni-spoof-macos-arm64 config.json
 ```
 
-### Windows
-
-1. Download `sni-spoof-windows-x64.zip` from [Releases](https://github.com/akonil/sni-spoofing-unified/releases)
-2. Extract and edit `config.json`
-3. Run as Administrator: `sni-spoof-windows-x64.exe config.json`
+**Windows:** Download `sni-spoof-windows-x64.zip`, extract, then run in Command Prompt as Administrator.
 
 ---
 
-## Option 2: Build from Source
+## Verify Setup Works
+
+1. Start the proxy:
+   ```bash
+   RUST_LOG=info sudo ./sni-spoof config.json
+   ```
+   
+2. Look for output like:
+   ```
+   listener started listen=0.0.0.0:40443 upstream=...
+   ```
+
+3. Point your client to `127.0.0.1:40443` and test.
+
+---
+
+---
+
+## Build from Source
 
 ### Linux
 
@@ -280,83 +339,150 @@ This helps you identify which SNIs work best in your region.
 
 ---
 
-## Troubleshooting
+## Advanced Troubleshooting
 
-| Problem | Cause | Fix |
-|---------|-------|-----|
-| `failed to open raw socket` (Linux) | Missing permissions | Run with `sudo` or set `CAP_NET_RAW` |
-| `failed to open BPF device` (macOS) | Not running as root | Run with `sudo` |
-| `failed to open WinDivert` (Windows) | Not Administrator | Run cmd as Administrator |
-| `could not determine local IP` | No route to upstream IP | Check your network / upstream IP in config |
-| `timeout waiting for fake ACK` | Upstream unreachable or DPI blocking | Try a different `fake_sni` domain |
-| Binary not found | Build not run | Run `cargo build --release` first |
+| Error | Root Cause | Solution |
+|-------|------------|----------|
+| `failed to open raw socket` | Missing AF_PACKET permission (Linux) | Run `sudo` or grant `CAP_NET_RAW` capability |
+| `failed to open BPF device` | BPF device in use or missing (macOS) | Ensure `sudo`, close Wireshark or other packet capture tools |
+| `failed to open WinDivert` | Not Administrator (Windows) | Right-click cmd → "Run as administrator" |
+| `could not determine local IP` | No route to upstream address | Verify upstream IP is reachable from your network |
+| `timeout waiting for fake ACK` | DPI blocking or upstream unreachable | Try a different SNI domain from `fake_sni_pool` |
 
 ---
 
-## Quick Start Scripts
+## Advanced Features & Configuration
 
-The project includes ready-to-use launcher scripts for all platforms:
+### Linux: CAP_NET_RAW Capability (Alternative to sudo)
 
-### Linux / macOS
-
-The `run.sh` script handles building, permissions, and launching:
+To run without `sudo`, grant the `CAP_NET_RAW` capability:
 
 ```bash
-# Interactive setup wizard
+sudo setcap cap_net_raw+ep ./target/release/sni-spoof
+./target/release/sni-spoof config.json  # No sudo needed
+```
+
+### Rate Limiting
+
+Prevent connection floods with `max_connections_per_sec`:
+
+```json
+{
+  "listeners": [
+    {
+      "listen": "0.0.0.0:40443",
+      "connect": "1.2.3.4:443",
+      "fake_sni_pool": ["www.speedtest.net"],
+      "max_connections_per_sec": 100
+    }
+  ]
+}
+```
+
+Set to `0` for unlimited connections.
+
+### Gaming Mode
+
+For latency-sensitive applications:
+
+```json
+"gaming_mode": true
+```
+
+Reduces socket buffers (32 KB instead of 256 KB) for lower latency.
+
+### Systemd Service (Linux)
+
+Run persistently in the background:
+
+Create `/etc/systemd/system/sni-spoof.service`:
+
+```ini
+[Unit]
+Description=SNI Spoof Proxy
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/sni-spoof /etc/sni-spoof/config.json
+Restart=on-failure
+Environment=RUST_LOG=warn
+AmbientCapabilities=CAP_NET_RAW
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now sni-spoof
+sudo systemctl status sni-spoof
+sudo journalctl -u sni-spoof -f  # View logs
+```
+
+---
+
+## Launcher Scripts
+
+The project includes convenient scripts that handle building and permissions automatically:
+
+### Linux / macOS (`run.sh`)
+
+```bash
+# Interactive setup wizard (recommended for first-time users)
 ./run.sh --wizard
 
-# Use a preset
-./run.sh --preset hcaptcha      # hCaptcha pool
-./run.sh --preset cloudflare    # Cloudflare pool
+# Use preset configs
+./run.sh --preset hcaptcha      # hCaptcha SNI pool
+./run.sh --preset cloudflare    # Cloudflare SNI pool
 ./run.sh --preset stealth       # Stealth mode (fragmentation enabled)
 
-# Use default config.json
+# Run with default config.json
 ./run.sh
 
-# Use a custom config
+# Run with custom config
 ./run.sh /path/to/config.json
 
-# Run with info logs
+# Run with detailed logging
 RUST_LOG=info ./run.sh config.json
 ```
 
-The script automatically:
-- Detects flags (--wizard, --preset) and passes them to the binary
-- Checks for binary; builds if missing (`cargo build --release`)
-- Handles sudo permissions (prompts if needed)
-- Sets default log level to `warn`
+**What the script does automatically:**
+- Detects `--wizard` and `--preset` flags
+- Builds the binary if missing
+- Handles `sudo` permissions
+- Sets log level to `warn` by default
 
-### Windows
+### Windows (`run.bat`)
 
-The `run.bat` script handles building, admin check, and launching:
+Right-click Command Prompt and select **"Run as administrator"**, then:
 
 ```cmd
-REM Right-click Command Prompt, select "Run as administrator", then:
-
 REM Interactive setup wizard
 run.bat --wizard
 
-REM Use a preset
+REM Use presets
 run.bat --preset hcaptcha
 run.bat --preset stealth
 
-REM Use default config.json
+REM Run with default config
 run.bat
 
-REM Use custom config
+REM Run with custom config
 run.bat C:\path\to\config.json
 
-REM Run with info logs
+REM Run with detailed logging
 set RUST_LOG=info
 run.bat config.json
 ```
 
-The script automatically:
-- Detects flags (--wizard, --preset) and passes them to the binary
-- Checks for Administrator privileges
-- Checks for binary; builds if missing (`cargo build --release`)
-- Sets default log level to `warn`
-- Shows pause prompt to view output
+**What the script does automatically:**
+- Checks for Administrator permissions
+- Detects `--wizard` and `--preset` flags
+- Builds the binary if missing
+- Sets log level to `warn` by default
+- Shows output in the console
 
 ---
 
