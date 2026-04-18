@@ -1,0 +1,186 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version from Cargo.toml
+        id: version
+        run: |
+          VERSION=$(grep '^version = ' Cargo.toml | head -1 | cut -d'"' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Generate release tag
+        id: tag
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          TAG="v${{ steps.version.outputs.version }}-${SHORT_SHA}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          release_name: Release ${{ steps.tag.outputs.tag }}
+          draft: false
+          prerelease: false
+          body: |
+            Automated release for commit ${{ github.sha }}
+
+            ## Binaries
+            - Linux (x86_64)
+            - macOS (x86_64, aarch64)
+            - Windows (x86_64)
+
+  build-linux:
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpcap-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          cp target/release/sni-spoof dist/sni-spoof-linux-x64
+          cp config.json dist/
+          cp README.md dist/
+          cp LICENSE dist/
+          tar czf sni-spoof-linux-x64.tar.gz -C dist .
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./sni-spoof-linux-x64.tar.gz
+          asset_name: sni-spoof-linux-x64.tar.gz
+          asset_content_type: application/gzip
+
+  build-macos-x64:
+    needs: create-release
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install libpcap
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          cp target/release/sni-spoof dist/sni-spoof-macos-x64
+          cp config.json dist/
+          cp README.md dist/
+          cp LICENSE dist/
+          tar czf sni-spoof-macos-x64.tar.gz -C dist .
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./sni-spoof-macos-x64.tar.gz
+          asset_name: sni-spoof-macos-x64.tar.gz
+          asset_content_type: application/gzip
+
+  build-macos-arm:
+    needs: create-release
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install libpcap
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          cp target/release/sni-spoof dist/sni-spoof-macos-arm64
+          cp config.json dist/
+          cp README.md dist/
+          cp LICENSE dist/
+          tar czf sni-spoof-macos-arm64.tar.gz -C dist .
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./sni-spoof-macos-arm64.tar.gz
+          asset_name: sni-spoof-macos-arm64.tar.gz
+          asset_content_type: application/gzip
+
+  build-windows:
+    needs: create-release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Package binary
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item target\release\sni-spoof.exe dist\sni-spoof-windows-x64.exe
+          Copy-Item config.json dist\
+          Copy-Item README.md dist\
+          Copy-Item LICENSE dist\
+          Compress-Archive -Path dist\* -DestinationPath sni-spoof-windows-x64.zip
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./sni-spoof-windows-x64.zip
+          asset_name: sni-spoof-windows-x64.zip
+          asset_content_type: application/zip
