@@ -302,6 +302,14 @@ The project includes ready-to-use launcher scripts for all platforms:
 The `run.sh` script handles building, permissions, and launching:
 
 ```bash
+# Interactive setup wizard
+./run.sh --wizard
+
+# Use a preset
+./run.sh --preset hcaptcha      # hCaptcha pool
+./run.sh --preset cloudflare    # Cloudflare pool
+./run.sh --preset stealth       # Stealth mode (fragmentation enabled)
+
 # Use default config.json
 ./run.sh
 
@@ -313,6 +321,7 @@ RUST_LOG=info ./run.sh config.json
 ```
 
 The script automatically:
+- Detects flags (--wizard, --preset) and passes them to the binary
 - Checks for binary; builds if missing (`cargo build --release`)
 - Handles sudo permissions (prompts if needed)
 - Sets default log level to `warn`
@@ -323,6 +332,15 @@ The `run.bat` script handles building, admin check, and launching:
 
 ```cmd
 REM Right-click Command Prompt, select "Run as administrator", then:
+
+REM Interactive setup wizard
+run.bat --wizard
+
+REM Use a preset
+run.bat --preset hcaptcha
+run.bat --preset stealth
+
+REM Use default config.json
 run.bat
 
 REM Use custom config
@@ -334,6 +352,7 @@ run.bat config.json
 ```
 
 The script automatically:
+- Detects flags (--wizard, --preset) and passes them to the binary
 - Checks for Administrator privileges
 - Checks for binary; builds if missing (`cargo build --release`)
 - Sets default log level to `warn`

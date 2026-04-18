@@ -12,11 +12,31 @@ if %errorlevel% neq 0 (
 
 set PROJECT_DIR=%~dp0
 set BINARY=%PROJECT_DIR%target\release\sni-spoof.exe
-set CONFIG=%1
+set ARG=%1
+
+REM Check if argument is a flag (starts with --)
+if "%ARG:~0,2%"=="--" (
+    REM Pass flag directly to binary
+    echo Running: %BINARY% %ARG%
+    echo.
+    if not defined RUST_LOG set RUST_LOG=warn
+    "%BINARY%" %ARG%
+    pause
+    exit /b 0
+)
+
+REM Handle config file
+set CONFIG=%ARG%
 if "%CONFIG%"=="" set CONFIG=%PROJECT_DIR%config.json
 
 if not exist "%CONFIG%" (
     echo Error: Config file not found: %CONFIG%
+    echo.
+    echo Usage:
+    echo   run.bat               - Run with default config.json
+    echo   run.bat path\config   - Run with custom config
+    echo   run.bat --wizard      - Interactive setup
+    echo   run.bat --preset hcaptcha - Use hCaptcha preset
     pause
     exit /b 1
 )
