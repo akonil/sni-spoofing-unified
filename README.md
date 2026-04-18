@@ -6,6 +6,10 @@
 
 A cross-platform SNI spoofing proxy written in Rust. Helps access content blocked by network filtering by spoofing the domain name (SNI) during connection setup. Works on **Linux**, **macOS**, and **Windows**.
 
+### New to SNI Spoofing?
+
+If you're unfamiliar with how SNI spoofing works, see [**SNI_SPOOFING_EXPLAINED_FA.md**](./SNI_SPOOFING_EXPLAINED_FA.md) for a beginner-friendly explanation in Persian (فارسی).
+
 ---
 
 # PART 1: FOR REGULAR USERS
@@ -436,6 +440,10 @@ MIT License — See [LICENSE](LICENSE) file for details.
 یک پروکسی جعل SNI با کارایی بالا و چندسکویی، نوشته‌شده به Rust. با تزریق یک TLS ClientHello جعلی با SNI فریب‌کارانه در طول مذاکره TCP، فیلترینگ مبتنی بر DPI را دور می‌زند و سپس ترافیک را به صورت شفاف ریلی می‌کند.
 
 **سیستم‌عامل‌های پشتیبانی‌شده:** Linux · macOS · Windows
+
+### تازه‌وارد به SNI Spoofing؟
+
+اگر با نحوه‌ی کارکرد SNI spoofing آشنا نیستید، به [**SNI_SPOOFING_EXPLAINED_FA.md**](./SNI_SPOOFING_EXPLAINED_FA.md) مراجعه کنید برای یک توضیح ساده برای تازه‌واردها.
 
 ---
 
